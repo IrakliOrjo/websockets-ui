@@ -4,8 +4,8 @@ export function regCommand(command, obj) {
     data: JSON.stringify({
       name: obj.name,
       index: obj.index,
-      error: false,
-      errorText: "",
+      error: obj.error,
+      errorText: obj.errorText,
     }),
     id: 0,
   };

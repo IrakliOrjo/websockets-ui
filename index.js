@@ -10,7 +10,7 @@ import {
   regCommand,
   updateRoomCommand,
 } from "./src/utils/generateCommand.js";
-import { createRoom } from "./src/utils/manageRooms.js";
+import { addPlayer, createRoom } from "./src/utils/manageRooms.js";
 
 const server = createServer(function (req, res) {
   const __dirname = path.resolve(path.dirname(""));
@@ -33,7 +33,8 @@ console.log(`Start static http server on the ${HTTP_PORT} port!`);
 
 //hashmap
 export const clients = {};
-
+let newUser;
+let room;
 //const socketServer = createServer();
 export const wsServer = new WebSocketServer({
   port: 3000,
@@ -101,29 +102,50 @@ wsServer.on("connection", function connection(ws, request) {
       id: 0,
     };
 
+    console.log("sent userData", userData);
     if (data.type === "reg") {
-      const newUser = createNewUSer(userData);
-      users.push(newUser);
-      let command = regCommand("reg", users[users.length - 1]);
-      //console.log("USERS OBJECT: ", command);
+      newUser = createNewUSer(userData, ws);
+      let command = regCommand("reg", newUser);
+      //console.log("USERS OBJECT: ", newUser);
       ws.send(JSON.stringify(command));
-      ws.send(JSON.stringify(updateRoom));
-      ws.send(JSON.stringify(updateWinners));
+      if (!newUser.error) {
+        users.push(newUser);
+        ws.send(JSON.stringify(updateRoom));
+        ws.send(JSON.stringify(updateWinners));
+      }
     } else if (data.type === "create_room") {
       let room = createRoom();
       rooms.push(room);
       //addUserToRoom(rooms[rooms.length - 1].roomUsers, users[users.length - 1]);
       let command = updateRoomCommand(rooms[0]);
-      console.log("sent create room", command, rooms[0]);
       ws.send(JSON.stringify(command));
     } else if (data.type === "add_user_to_room") {
-      // console.log("sent: ", updateRoomNewUser);
-      addUserToRoom(rooms[0].roomUsers, users[users.length - 1]);
-      let command = updateRoomCommand(rooms[0]);
+      //need to implement that it adds approappriate player on each connection
+      //also need to send game only to connected users of the room
+      let currentUser = users.find((user) => user.ws === ws);
+      let currentRoom = rooms.find(
+        (room) => room.roomId === userData.indexRoom
+      );
+      if (
+        !currentRoom.roomUsers.find((user) => user.name === currentUser.name)
+      ) {
+        room = addPlayer(userData.indexRoom, currentUser);
+        let command = updateRoomCommand(room);
+        ws.send(JSON.stringify(command));
+      }
 
-      ws.send(JSON.stringify(command));
-      if (rooms[0].roomUsers.length > 1) {
-        ws.send(JSON.stringify(game));
+      if (room?.roomUsers.length === 2) {
+        wsServer.clients.forEach(function each(client) {
+          if (
+            client &&
+            client.readyState === WebSocket.OPEN &&
+            room.roomUsers.find((user) => user.ws === client)
+          ) {
+            client.send(JSON.stringify(game));
+          }
+        });
+
+        //ws.send(JSON.stringify(game));
         //console.log(wsServer.clients.server, "client server");
         /* wsServer.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
@@ -139,7 +161,11 @@ wsServer.on("connection", function connection(ws, request) {
   });
 });
 
-wsServer.on("request", (request) => {
+wsServer.on("close", function terminate(ws) {
+  ws.terminate();
+});
+
+/* wsServer.on("request", (request) => {
   //connect
   console.log("requeeeeeeeeeest");
   const connection = request.accept(null, request.origin);
@@ -164,3 +190,4 @@ wsServer.on("request", (request) => {
   //send back the client connect
   connection.send(Buffer.from(JSON.stringify(payLoad)));
 });
+ */
