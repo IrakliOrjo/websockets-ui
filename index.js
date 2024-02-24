@@ -4,10 +4,14 @@ import { createNewUSer } from "./src/utils/createUser.js";
 import { createServer } from "node:http";
 import path from "node:path";
 import { readFile } from "node:fs";
-import { users, rooms } from "./src/data/db.js";
+import { users, rooms, game } from "./src/data/db.js";
 import {
   addUserToRoom,
+  createGame,
+  createGameCommand,
+  createTurnCommand,
   regCommand,
+  startGame,
   updateRoomCommand,
 } from "./src/utils/generateCommand.js";
 import { addPlayer, createRoom } from "./src/utils/manageRooms.js";
@@ -50,7 +54,7 @@ wsServer.on("connection", function connection(ws, request) {
     //console.log("userId", userId);
     data = JSON.parse(data);
     let userData = (data.data && JSON.parse(data?.data)) || null;
-    console.log("data TYPE: ", userData);
+    //console.log("data TYPE: ", userData);
     /* let reg = {
       type: "reg",
       data: JSON.stringify({
@@ -91,18 +95,7 @@ wsServer.on("connection", function connection(ws, request) {
       ]),
       id: 0,
     };
-    let game = {
-      type: "create_game",
-      data: JSON.stringify([
-        {
-          idGame: 1,
-          idPlayer: 1,
-        },
-      ]),
-      id: 0,
-    };
-
-    console.log("sent userData", userData);
+    //console.log("sent userData", userData);
     if (data.type === "reg") {
       newUser = createNewUSer(userData, ws);
       let command = regCommand("reg", newUser);
@@ -117,20 +110,22 @@ wsServer.on("connection", function connection(ws, request) {
       let room = createRoom();
       rooms.push(room);
       //addUserToRoom(rooms[rooms.length - 1].roomUsers, users[users.length - 1]);
-      let command = updateRoomCommand(rooms[0]);
+      let currentUser = users.find((user) => user.ws === ws);
+      let command = updateRoomCommand(rooms[0], currentUser);
       ws.send(JSON.stringify(command));
     } else if (data.type === "add_user_to_room") {
+      let currentUser = users.find((user) => user.ws === ws);
+
       //need to implement that it adds approappriate player on each connection
       //also need to send game only to connected users of the room
-      let currentUser = users.find((user) => user.ws === ws);
       let currentRoom = rooms.find(
         (room) => room.roomId === userData.indexRoom
       );
       if (
-        !currentRoom.roomUsers.find((user) => user.name === currentUser.name)
+        !currentRoom?.roomUsers?.find((user) => user.name === currentUser.name)
       ) {
         room = addPlayer(userData.indexRoom, currentUser);
-        let command = updateRoomCommand(room);
+        let command = updateRoomCommand(room, currentUser);
         ws.send(JSON.stringify(command));
       }
 
@@ -141,10 +136,25 @@ wsServer.on("connection", function connection(ws, request) {
             client.readyState === WebSocket.OPEN &&
             room.roomUsers.find((user) => user.ws === client)
           ) {
-            client.send(JSON.stringify(game));
+            if (!game.idGame) {
+              console.log("creatED GANE");
+              createGame();
+            }
+            //console.log(game.game, "gamee after");
+            let currentUser = users.find((user) => user.ws === client);
+            //console.log(currentUser.index, "user INDEX");
+            let gameCommand = createGameCommand(currentUser.index);
+            //console.log(gameCommand, "gameCommand PRINTEEED");
+
+            client.send(JSON.stringify(gameCommand));
           }
         });
-
+        let roomFree = {
+          type: "update_room",
+          data: JSON.stringify(currentUser),
+          id: 0,
+        };
+        client.send(JSON.stringify(roomFree));
         //ws.send(JSON.stringify(game));
         //console.log(wsServer.clients.server, "client server");
         /* wsServer.clients.forEach((client) => {
@@ -154,6 +164,30 @@ wsServer.on("connection", function connection(ws, request) {
           }
         }); */
         //ws.send(JSON.stringify(updateRoomNew));
+      }
+    } else if (data.type === "add_ships") {
+      let currentPlayer = game.players.find((user) => user.ws === ws);
+      currentPlayer.ships = userData.ships;
+      let allPlayersHaveShips = game.players.every(
+        (player) => player.ships !== undefined
+      );
+
+      if (allPlayersHaveShips) {
+        let gameCommand = startGame(userData.ships, currentPlayer.index);
+
+        wsServer.clients.forEach(function each(client) {
+          if (
+            client &&
+            client.readyState === WebSocket.OPEN &&
+            game.players.find((user) => user.ws === client)
+          ) {
+            let currentUser = users.find((user) => user.ws === client);
+            let turn = createTurnCommand(currentUser.index);
+            //console.log("SENT GAME COMMAND", gameCommand);
+            client.send(JSON.stringify(gameCommand));
+            client.send(JSON.stringify(turn));
+          }
+        });
       }
     }
 

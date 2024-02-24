@@ -1,3 +1,4 @@
+import { game } from "../data/db.js";
 import { generateRandomNumber } from "./generateRandomNumber.js";
 import { rooms } from "../data/db.js";
 
@@ -20,7 +21,8 @@ export function addPlayer(id, player) {
   const room = rooms.find((room) => room.roomId === id);
   room?.roomUsers.push(addUser);
   if (room?.roomUsers.length === 2) {
-    rooms.splice(rooms.indexOf(room), 1);
+    let deletedRoom = rooms.splice(rooms.indexOf(room), 1);
+    game.room = deletedRoom[0];
   }
   return room;
 }

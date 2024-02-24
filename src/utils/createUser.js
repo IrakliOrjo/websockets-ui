@@ -8,6 +8,7 @@ export function createNewUSer(arg, ws) {
     error: false,
     errorText: "",
     ws: ws,
+    ships: [],
   };
   newUser.error = users.some((user) => user.name === newUser.name);
   if (newUser.error) {
