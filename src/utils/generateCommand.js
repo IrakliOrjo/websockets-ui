@@ -1,5 +1,5 @@
 import { generateRandomNumber } from "./generateRandomNumber.js";
-import { game } from "../data/db.js";
+import { game, rooms } from "../data/db.js";
 
 export function regCommand(command, obj) {
   let reg = {
@@ -15,20 +15,16 @@ export function regCommand(command, obj) {
   return reg;
 }
 
-export function updateRoomCommand(obj, currentUser) {
-  let filtered = obj.roomUsers.map((user) => {
+export function updateRoomCommand(roomId, currentUser) {
+  const room = rooms.find((room) => room.roomId === roomId);
+  let filtered = room?.roomUsers?.map((user) => {
     return Object.fromEntries(
       Object.entries(user).filter(([key]) => key !== "ws")
     );
   });
   let updateRoom = {
     type: "update_room",
-    data: JSON.stringify([
-      {
-        roomId: obj.roomId,
-        roomUsers: filtered,
-      },
-    ]),
+    data: JSON.stringify(rooms),
     id: 0,
   };
   return updateRoom;
@@ -57,28 +53,56 @@ export function startGame(ships, playerIndex) {
 export function createGameCommand(index) {
   let gameCommand = {
     type: "create_game",
-    data: JSON.stringify([
-      {
-        idGame: game.idGame,
-        idPlayer: index,
-      },
-    ]),
+    data: JSON.stringify({
+      idGame: game.idGame,
+      idPlayer: index,
+    }),
     id: 0,
   };
   return gameCommand;
 }
 
-export function createGame() {
-  game.game = {};
+export function createGame(ws, room) {
+  //game.game = {};
+  let currentPlayerIndex = room.roomUsers.findIndex(
+    (user) => user.index === ws.id
+  );
+  let secondPlayerIndex = currentPlayerIndex === 1 ? 0 : 1;
+  console.log("curreeent player indexxx", currentPlayerIndex);
+  let currentPlayer = room.roomUsers[currentPlayerIndex];
+
   game.idGame = generateRandomNumber();
-  game.players = game.room.roomUsers;
+  let players = [
+    {
+      idPlayer: 0,
+      userId: currentPlayer.index,
+
+      ships: [],
+      shipsBoard: [],
+      //sets first turn
+      isTurn: true,
+      wins: 0,
+    },
+    //searches for first user that created room and was added to it
+    {
+      idPlayer: 1,
+      userId: room.roomUsers[secondPlayerIndex].index,
+
+      ships: [],
+      shipsBoard: [],
+      isTurn: false,
+      wins: 0,
+    },
+  ];
+  game.players = players;
 }
 
 export function createTurnCommand(index) {
+  console.log(game.players[0].userId, "ussssssssssss");
   let turn = {
     type: "turn",
     data: JSON.stringify({
-      currentPlayer: index,
+      currentPlayer: game.players[0].userId,
     }),
     id: 0,
   };

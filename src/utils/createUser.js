@@ -10,6 +10,7 @@ export function createNewUSer(arg, ws) {
     ws: ws,
     ships: [],
   };
+  ws.id = newUser.index;
   newUser.error = users.some((user) => user.name === newUser.name);
   if (newUser.error) {
     newUser.errorText = "The user already exists";

@@ -7,6 +7,7 @@ export function createRoom() {
     roomId: generateRandomNumber(),
     roomUsers: [],
   };
+  rooms.push(room);
   return room;
 }
 
@@ -16,8 +17,8 @@ export function addPlayer(id, player) {
   let addUser = {
     name: player.name,
     index: player.index,
-    ws: player.ws,
   };
+  //deletes room from rooms and assigns it to GAme objects room
   const room = rooms.find((room) => room.roomId === id);
   room?.roomUsers.push(addUser);
   if (room?.roomUsers.length === 2) {
