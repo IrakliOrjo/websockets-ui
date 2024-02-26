@@ -1,21 +1,23 @@
-import { httpServer } from "./src/http_server/index.js";
+import { httpServer } from "./src/http_server/index";
 import { WebSocketServer, WebSocket } from "ws";
-import { createNewUSer } from "./src/utils/createUser.js";
+import { Data } from "./src/types/types";
+import { createNewUSer } from "./src/utils/createUser";
 import { createServer } from "node:http";
 import path from "node:path";
 import { readFile } from "node:fs";
-import { users, rooms, game } from "./src/data/db.js";
+import { WebSocketID, Room, User } from "./src/types/types";
+import { users, rooms, game } from "./src/data/db";
 import {
-  addUserToRoom,
   createGame,
   createGameCommand,
   createTurnCommand,
   regCommand,
   startGame,
   updateRoomCommand,
-} from "./src/utils/generateCommand.js";
-import { addPlayer, createRoom } from "./src/utils/manageRooms.js";
-import { attack, createGameBoard } from "./src/controllers/game.js";
+  updateGameWinners,
+} from "./src/utils/generateCommand";
+import { addPlayer, createRoom } from "./src/utils/manageRooms";
+import { attack, createGameBoard } from "./src/controllers/game";
 
 const server = createServer(function (req, res) {
   const __dirname = path.resolve(path.dirname(""));
@@ -36,17 +38,16 @@ server.listen(HTTP_PORT);
 
 console.log(`Start static http server on the ${HTTP_PORT} port!`);
 
-//hashmap
 export const clients = {};
 let newUser;
-let room;
-//const socketServer = createServer();
+let room: Room;
+
 export const wsServer = new WebSocketServer({
   port: 3000,
   clientTracking: true,
 });
 
-wsServer.on("connection", function connection(ws, req) {
+wsServer.on("connection", function connection(ws: WebSocketID, req) {
   const socketData = req.socket;
   console.log(
     `Client was connected on port ${socketData.remotePort}, with address ${socketData.remoteAddress} and protocol ${socketData.remoteFamily}!`
@@ -55,105 +56,92 @@ wsServer.on("connection", function connection(ws, req) {
   ws.on("error", console.error);
 
   ws.on("message", function message(data) {
-    console.log("received: %s", JSON.parse(data));
-    //console.log("userId", userId);
-    data = JSON.parse(data);
-    let userData = (data.data && JSON.parse(data?.data)) || null;
-    //console.log("data TYPE: ", userData);
-    /* let reg = {
-      type: "reg",
-      data: JSON.stringify({
-        name: userData && userData?.name,
-        index: "0",
-        error: false,
-        errorText: "",
-      }),
-      id: 0,
-    }; */
+    console.log("received: %s", JSON.parse(data.toString()));
+
+    let parsedData = JSON.parse(data.toString());
+    let userData = (parsedData.data && JSON.parse(parsedData?.data)) || null;
+
     let updateWinners = {
       type: "update_winners",
-      data: JSON.stringify([]),
-      id: 0,
-    };
-    let updateRoom = {
-      type: "update_room",
-      data: JSON.stringify(rooms.length > 0 ? rooms[0] : []),
+      parsedData: JSON.stringify([]),
       id: 0,
     };
 
-    //creates user
-    if (data.type === "reg") {
+    if (parsedData.type === "reg") {
       newUser = createNewUSer(userData, ws);
       let command = regCommand("reg", newUser);
-
+      console.log("sent: ", command);
       ws.send(JSON.stringify(command));
-      //pushes user to users
+
       if (!newUser.error) {
         users.push(newUser);
         wsServer.clients.forEach(function each(client) {
-          ws.send(JSON.stringify(updateRoomCommand()));
-          ws.send(JSON.stringify(updateWinners));
+          client.send(JSON.stringify(updateRoomCommand()));
+          client.send(JSON.stringify(updateWinners));
         });
       }
-    } else if (data.type === "create_room") {
+    } else if (parsedData.type === "create_room") {
       if (rooms.length < 1) {
         //creates room
         let room = createRoom();
         //adds registered user to room
-        let currentUser = users.find((user) => user.ws === ws);
+        let currentUser = users.find((user) => user.index === ws.id);
         room = addPlayer(room.roomId, currentUser);
         //generates update room command
-        let command = updateRoomCommand(room.roomId, currentUser);
+        let command = updateRoomCommand(room.roomId);
         wsServer.clients.forEach(function each(client) {
+          console.log("sent: ", command);
           client.send(JSON.stringify(command));
         });
       } else {
         //creates room but doesnt add user
         let room = createRoom();
         wsServer.clients.forEach(function each(client) {
+          console.log("sent: ", room);
           client.send(JSON.stringify(room));
         });
       }
-
-      //addUserToRoom(rooms[rooms.length - 1].roomUsers, users[users.length - 1]);
-    } else if (data.type === "add_user_to_room") {
+    } else if (parsedData.type === "add_user_to_room") {
       //finds current user and room
-      let currentUser = users.find((user) => user.ws === ws);
+      let currentUser = users.find((user) => user.index === ws.id);
       let currentRoom = rooms.find(
         (room) => room.roomId === userData.indexRoom
       );
       if (
-        !currentRoom?.roomUsers?.find((user) => user.name === currentUser.name)
+        !currentRoom?.roomUsers?.find(
+          (user: User) => user.name === currentUser.name
+        )
       ) {
         //if current user is not found, user is added to room
         //if 2 players in room, room is deleted from rooms and added to game object
         room = addPlayer(userData.indexRoom, currentUser);
-
-        let command = updateRoomCommand(room, currentUser);
       }
 
       if (room?.roomUsers.length === 2) {
-        wsServer.clients.forEach(function each(client) {
+        wsServer.clients.forEach(function each(client: WebSocketID) {
           if (
             client &&
+            game.room &&
             client.readyState === WebSocket.OPEN &&
-            game.room.roomUsers.find((user) => user.index === client.id)
+            (Array.isArray(game.room)
+              ? game.room.find((user) => user.index === client.id)
+              : game.room.roomUsers.find(
+                  (user: any) => user.index === client.id
+                ))
           ) {
             if (!game.idGame) {
               createGame(ws, room);
             }
 
-            //room = [];
-            //console.log(game.game, "gamee after");
-            let currentUser = users.find((user) => user.index === client.id);
-            //creates create_game command and sends to each client
-            let gameCommand = createGameCommand(currentUser.index);
+            let enemy = game.players.find((user) => user.userId !== client.id);
 
+            let gameCommand = createGameCommand(enemy.userId);
+            console.log("SENT: ", gameCommand);
             client.send(JSON.stringify(gameCommand));
           }
         });
       }
-    } else if (data.type === "add_ships") {
+    } else if (parsedData.type === "add_ships") {
       //room = [];
       let currentPlayer = game.players.find((user) => user.userId === ws.id);
       currentPlayer.ships = userData.ships;
@@ -161,64 +149,33 @@ wsServer.on("connection", function connection(ws, req) {
         (player) => player.ships.length > 0
       );
 
-      console.log("all player have ships", allPlayersHaveShips);
-
       if (allPlayersHaveShips) {
         game.players[0].shipsBoard = createGameBoard(game.players[0].ships);
         game.players[1].shipsBoard = createGameBoard(game.players[1].ships);
 
         let gameCommand = startGame(userData.ships, currentPlayer.index);
 
-        wsServer.clients.forEach(function each(client) {
+        wsServer.clients.forEach(function each(client: WebSocketID) {
           if (
             client &&
             client.readyState === WebSocket.OPEN &&
             game.players.find((user) => user.userId === client.id)
           ) {
-            let currentUser = users.find((user) => user.index === client.id);
-            let turn = createTurnCommand(currentUser.index);
-            //sends start game
-            //sends turn
+            let turn = createTurnCommand();
+            console.log("sent: ", gameCommand);
+            console.log("sent: ", turn);
             client.send(JSON.stringify(gameCommand));
             client.send(JSON.stringify(turn));
           }
         });
       }
-    } else if (data.type === "attack") {
-      attack(data.data, wsServer);
+    } else if (parsedData.type === "attack") {
+      // @ts-ignore
+      attack(parsedData.data, wsServer);
     }
-
-    //console.log(answer, "answer");
   });
 });
 
-wsServer.on("close", function terminate(ws) {
-  ws.terminate();
+wsServer.on("close", () => {
+  console.log("websocket server is closed");
 });
-
-/* wsServer.on("request", (request) => {
-  //connect
-  console.log("requeeeeeeeeeest");
-  const connection = request.accept(null, request.origin);
-  connection.on("open", () => console.log("opened"));
-  connection.on("close", () => console.log("closed"));
-  connection.on("message", (message) => {
-    const result = JSON.parse(message.utf8Data);
-    //received message from client
-    console.log(result);
-  });
-
-  //generate new clientID
-  const clientId = randomUUID();
-  clients[clientId] = {
-    connection,
-  };
-
-  const payLoad = {
-    method: "connect",
-    clientId: clientId,
-  };
-  //send back the client connect
-  connection.send(Buffer.from(JSON.stringify(payLoad)));
-});
- */

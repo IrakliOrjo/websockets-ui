@@ -1,6 +1,7 @@
-import { game } from "../data/db.js";
-import { generateRandomNumber } from "./generateRandomNumber.js";
-import { rooms } from "../data/db.js";
+import { game } from "../data/db";
+import { generateRandomNumber } from "./generateRandomNumber";
+import { rooms } from "../data/db";
+import { User } from "../types/types";
 
 export function createRoom() {
   let room = {
@@ -13,7 +14,7 @@ export function createRoom() {
 
 export function updateRoom() {}
 
-export function addPlayer(id, player) {
+export function addPlayer(id: number, player: User) {
   let addUser = {
     name: player.name,
     index: player.index,

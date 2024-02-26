@@ -1,7 +1,8 @@
-import { generateRandomNumber } from "./generateRandomNumber.js";
-import { game, rooms } from "../data/db.js";
+import { generateRandomNumber } from "./generateRandomNumber";
+import { game, rooms, winners } from "../data/db";
+import { User, Ships, WebSocketID, Room } from "../types/types";
 
-export function regCommand(command, obj) {
+export function regCommand(command: string, obj: User) {
   let reg = {
     type: command,
     data: JSON.stringify({
@@ -15,13 +16,13 @@ export function regCommand(command, obj) {
   return reg;
 }
 
-export function updateRoomCommand(roomId, currentUser) {
+export function updateRoomCommand(roomId?: number) {
   const room = rooms.find((room) => room.roomId === roomId);
-  let filtered = room?.roomUsers?.map((user) => {
+  /* let filtered = room?.roomUsers?.map((user) => {
     return Object.fromEntries(
       Object.entries(user).filter(([key]) => key !== "ws")
     );
-  });
+  }); */
   let updateRoom = {
     type: "update_room",
     data: JSON.stringify(rooms),
@@ -30,15 +31,7 @@ export function updateRoomCommand(roomId, currentUser) {
   return updateRoom;
 }
 
-export function addUserToRoom(room, user) {
-  let addUser = {
-    name: user.name,
-    index: user.index,
-  };
-  room.push(addUser);
-}
-
-export function startGame(ships, playerIndex) {
+export function startGame(ships: Ships, playerIndex: number) {
   let command = {
     type: "start_game",
     data: {
@@ -50,7 +43,7 @@ export function startGame(ships, playerIndex) {
   return command;
 }
 
-export function createGameCommand(index) {
+export function createGameCommand(index: number) {
   let gameCommand = {
     type: "create_game",
     data: JSON.stringify({
@@ -62,19 +55,18 @@ export function createGameCommand(index) {
   return gameCommand;
 }
 
-export function createGame(ws, room) {
-  //game.game = {};
+export function createGame(ws: WebSocketID, room: Room) {
   let currentPlayerIndex = room.roomUsers.findIndex(
     (user) => user.index === ws.id
   );
   let secondPlayerIndex = currentPlayerIndex === 1 ? 0 : 1;
-  console.log("curreeent player indexxx", currentPlayerIndex);
+
   let currentPlayer = room.roomUsers[currentPlayerIndex];
 
   game.idGame = generateRandomNumber();
   let players = [
     {
-      idPlayer: 0,
+      name: currentPlayer.name,
       userId: currentPlayer.index,
 
       ships: [],
@@ -85,7 +77,7 @@ export function createGame(ws, room) {
     },
     //searches for first user that created room and was added to it
     {
-      idPlayer: 1,
+      name: room.roomUsers[secondPlayerIndex].name,
       userId: room.roomUsers[secondPlayerIndex].index,
 
       ships: [],
@@ -97,8 +89,7 @@ export function createGame(ws, room) {
   game.players = players;
 }
 
-export function createTurnCommand(index) {
-  console.log(game.players[0].userId, "ussssssssssss");
+export function createTurnCommand() {
   let turn = {
     type: "turn",
     data: JSON.stringify({
@@ -107,4 +98,26 @@ export function createTurnCommand(index) {
     id: 0,
   };
   return turn;
+}
+
+export function updateGameWinners(userId: number, wsServer: WebSocketID) {
+  const player = game?.players.find((player) => player.userId === userId);
+  const checkWinners = winners.find((winner) => winner.name === player.name);
+  if (checkWinners) {
+    checkWinners.wins += 1;
+  }
+  if (!checkWinners) {
+    winners.push({ name: player.name, wins: 1 });
+  }
+  let updateWinnersCommand = {
+    type: "update_winners",
+    data: JSON.stringify(winners),
+    id: 0,
+  };
+  wsServer.clients &&
+    wsServer.clients.forEach(function each(client) {
+      client.send(JSON.stringify(updateWinnersCommand));
+    });
+  //game = [];
+  return updateWinnersCommand;
 }
